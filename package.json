@@ -1,5 +1,6 @@
 {
   "private": true,
+  "type": "module",
   "name": "telegram-proxy",
   "version": "1.0.0",
   "devDependencies": {
