@@ -1,24 +1,29 @@
+import type { IncomingMessage, ServerResponse } from 'http';
+
 export const config = {
   api: { bodyParser: false },
 };
 
-export default async function handler(req: any, res: any) {
+function getRawBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+export default async function handler(req: IncomingMessage & { url?: string }, res: ServerResponse) {
   const path = (req.url || '').replace(/^\/api\/proxy\//, '');
   if (!path) {
-    res.status(400).json({ error: 'Empty path' });
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Empty path' }));
     return;
   }
 
   const tgUrl = `https://api.telegram.org/${path}`;
+  const rawBody = req.method !== 'GET' ? await getRawBody(req) : undefined;
 
-  // Collect raw body as Buffer (needed for FormData/multipart)
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  }
-  const body = chunks.length ? Buffer.concat(chunks) : undefined;
-
-  // Forward headers, replace host
   const headers: Record<string, string> = {};
   for (const [key, val] of Object.entries(req.headers)) {
     if (['host', 'connection', 'transfer-encoding'].includes(key)) continue;
@@ -28,14 +33,11 @@ export default async function handler(req: any, res: any) {
   const tgRes = await fetch(tgUrl, {
     method: req.method,
     headers,
-    body: req.method !== 'GET' ? body : undefined,
+    body: rawBody ? new Uint8Array(rawBody) : undefined,
   });
 
-  res.status(tgRes.status);
-
   const ct = tgRes.headers.get('content-type');
-  if (ct) res.setHeader('content-type', ct);
-
-  const data = await tgRes.arrayBuffer();
-  res.send(Buffer.from(data));
+  res.writeHead(tgRes.status, ct ? { 'content-type': ct } : {});
+  const data = Buffer.from(await tgRes.arrayBuffer());
+  res.end(data);
 }
