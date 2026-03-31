@@ -3,7 +3,7 @@ export const config = {
 };
 
 export default async function handler(req: any, res: any) {
-  const path = (req.url || '').replace(/^\/api\//, '');
+  const path = (req.url || '').replace(/^\/api\/proxy\//, '');
   if (!path) {
     res.status(400).json({ error: 'Empty path' });
     return;
@@ -33,7 +33,6 @@ export default async function handler(req: any, res: any) {
 
   res.status(tgRes.status);
 
-  // Forward content-type from Telegram
   const ct = tgRes.headers.get('content-type');
   if (ct) res.setHeader('content-type', ct);
 
